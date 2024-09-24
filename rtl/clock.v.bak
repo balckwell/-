@@ -1,0 +1,57 @@
+
+module clock(
+	input clk_1Hz,
+	input sys_rsn,
+	output reg[4:0]  hour,
+	output reg [5:0]  min,
+	output reg[5:0]  s
+);
+reg	[4:0] cnt_hour;
+reg   [5:0] cnt_min;
+reg   [5:0] cnt_s;
+
+always @( posedge clk_1Hz or negedge sys_rsn) begin
+	if(!sys_rsn) 
+		cnt_s<=6'b0;
+	else if(cnt_s<59)
+		cnt_s<=cnt_s+6'd1;
+	else
+		cnt_s<=6'b0;
+end
+
+always @(posedge clk_1Hz or negedge sys_rsn ) begin
+
+	if(!sys_rsn)
+	   cnt_min<=6'b0;
+	else if(cnt_min==59)
+		cnt_min<=6'd0;
+	else if(cnt_s==6'd59&&cnt_min<6'd59)
+	   cnt_min<=cnt_min+6'd1;
+	else
+		cnt_min<=cnt_min;
+		
+
+end	
+
+always @(posedge clk_1Hz or negedge sys_rsn ) begin
+
+	if(!sys_rsn)
+	   cnt_hour<=5'b0;
+	else if(cnt_hour==23)
+		cnt_hour<=5'd0;
+	else if(cnt_min==6'd59&&cnt_hour<5'd23)
+	   cnt_hour<=cnt_hour+5'd1;
+	else
+		cnt_hour<=cnt_hour;	
+	
+
+end
+
+always @(posedge clk_1Hz ) begin
+
+	hour<=cnt_hour;
+	min<= cnt_min;
+	s<=cnt_s;
+end
+
+endmodule

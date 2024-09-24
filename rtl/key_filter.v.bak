@@ -1,0 +1,31 @@
+module key_filter(
+    input sys_clk,
+    input sys_rstn,
+    input key,
+    output key_flag
+);
+
+localparam cnt_max=20'd1_000_000;
+reg [19:0] cnt_20ms;
+
+always@(posedge sys_clk or negedge sys_rstn)
+    if(!sys_rstn)
+        cnt_20ms<=20'd0;
+    else if(key==1'b0)
+        cnt_20ms<=20'd0;
+    else if(cnt_20ms == cnt_max)
+        cnt_20ms<=cnt_max;
+    else    
+        cnt_20ms<=cnt_20ms+20'd1;
+
+always@(posedge sys_clk or negedge sys_rstn)
+    if(!sys_rstn)
+        key_flag<=1'b0;
+    else if(cnt_20ms==(cnt_max-20'd1))
+        key_flag<=1'b1;
+    else
+        key_flag<=1'b0;
+
+endmodule
+
+

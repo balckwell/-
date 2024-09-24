@@ -1,0 +1,83 @@
+module ste_mccol(
+    input        sys_clk       ,
+    input        sys_rstn     ,
+    input        din       ,
+    output  reg [1:0]    check_pass
+);
+
+localparam S0 = 4'b0001; // 初始化状态
+localparam S1 = 4'b0010; // 计数状态
+localparam S2 = 4'b0100; // 计算状态
+localparam S3 = 4'b1000; // 结束状态
+
+reg             din_r;
+reg    [3:0]    curr_state;
+reg    [3:0]    next_state;
+
+// 输入数据打拍
+always @(posedge sys_clk) din_r <= din;
+
+//-------- 三段式状态机 --------//
+// 第一段（时序逻辑，用于描述状态寄存器）
+always @(posedge sys_clk or negedge sys_rstn) begin
+    if(!sys_rstn)
+        curr_state <= S0; //初始化状态
+    else
+        curr_state <= next_state;
+end
+
+// 第二段（组合逻辑，用于状态转移条件判断）
+always @(*) begin
+    next_state = S0;
+    case(curr_state)
+        S0 :
+            begin
+                if(din_r == 1'b1)
+                    next_state = S1;
+                else
+                    next_state = S0;
+            end
+            
+        S1 :
+            begin
+                if(din_r == 1'b1)
+                    next_state = S2;
+                else
+                    next_state = S1;
+            end
+
+        S2 :
+            begin
+                if(din_r == 1'b1)
+                    next_state = S3;
+                else
+                    next_state = S2;
+            end
+
+        S3 :
+            begin
+                if(din_r == 1'b1)
+                    next_state = S1;
+                else
+                    next_state = S0;
+            end
+
+        default:next_state = S0;
+    endcase
+end
+
+// 第三段（时序逻辑，用于描述输出）
+always @(posedge sys_clk or negedge sys_rstn) begin
+    if(!sys_rstn)
+        check_pass <= 2'b00;
+    else
+        case(curr_state)
+            S0 : check_pass <= 2'b00;
+            S1 : check_pass <= 2'b01;
+            S2 : check_pass <= 2'b10;
+            S3 : check_pass <= 2'b11;
+            default: check_pass <= 2'b00;
+        endcase
+end
+
+endmodule

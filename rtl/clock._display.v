@@ -1,0 +1,268 @@
+// clock_display.v
+// 模拟时钟显示模块
+
+module clock_display(
+    input wire vga_clk,          // VGA 时钟信号
+    input wire sys_rstn,         // 复位信号，低电平有效
+    input wire [10:0] pix_x,     // 当前像素的横坐标
+    input wire [10:0] pix_y,     // 当前像素的纵坐标
+    output reg [2:0] pix_data    // 输出像素数据（颜色）
+);
+
+    // 参数定义
+    parameter H_VALID = 11'd800;    // 水平有效区域
+    parameter V_VALID = 11'd600;    // 垂直有效区域
+
+    parameter RED     = 3'b100;
+    parameter GREEN   = 3'b010;
+    parameter BLUE    = 3'b001;
+    parameter BLACK   = 3'b000;
+    parameter WHITE   = 3'b111;
+
+    parameter CLK_FREQ = 40_000_000;  // VGA 时钟频率（40MHz）
+    parameter ONE_SEC  = CLK_FREQ;    // 一秒钟的时钟周期数
+
+    parameter CENTER_X = H_VALID / 2;
+    parameter CENTER_Y = V_VALID / 2;
+    parameter RADIUS   = 200;
+
+    // 时钟计数器
+    reg [31:0] sec_cnt;
+    reg [5:0] sec;
+    reg [5:0] min;
+    reg [4:0] hour;
+
+    // 定义 sin, cos 查找表
+    reg signed [15:0] sin_table [0:59];
+    reg signed [15:0] cos_table [0:59];
+
+    // 声明在 always 块中使用的变量
+    reg signed [15:0] delta_x, delta_y;
+    reg signed [31:0] distance_sq;
+    reg signed [31:0] sec_x, sec_y;
+    reg signed [31:0] min_x, min_y;
+    reg [5:0] hour_pos;
+    reg signed [31:0] hour_x, hour_y;
+
+    // 初始化 sin, cos 查找表
+    initial begin
+        // 以下是用 Python 脚本生成的 sin, cos 值，放大 10000 倍
+        sin_table[0] = 0;
+        cos_table[0] = 10000;
+        sin_table[1] = 1051;
+        cos_table[1] = 9945;
+        sin_table[2] = 2094;
+        cos_table[2] = 9781;
+        sin_table[3] = 3090;
+        cos_table[3] = 9510;
+        sin_table[4] = 4067;
+        cos_table[4] = 9135;
+        sin_table[5] = 5000;
+        cos_table[5] = 8660;
+        sin_table[6] = 5878;
+        cos_table[6] = 8090;
+        sin_table[7] = 6691;
+        cos_table[7] = 7431;
+        sin_table[8] = 7431;
+        cos_table[8] = 6691;
+        sin_table[9] = 8090;
+        cos_table[9] = 5878;
+        sin_table[10] = 8660;
+        cos_table[10] = 5000;
+        sin_table[11] = 9135;
+        cos_table[11] = 4067;
+        sin_table[12] = 9510;
+        cos_table[12] = 3090;
+        sin_table[13] = 9781;
+        cos_table[13] = 2094;
+        sin_table[14] = 9945;
+        cos_table[14] = 1051;
+        sin_table[15] = 10000;
+        cos_table[15] = 0;
+        sin_table[16] = 9945;
+        cos_table[16] = -1051;
+        sin_table[17] = 9781;
+        cos_table[17] = -2094;
+        sin_table[18] = 9510;
+        cos_table[18] = -3090;
+        sin_table[19] = 9135;
+        cos_table[19] = -4067;
+        sin_table[20] = 8660;
+        cos_table[20] = -5000;
+        sin_table[21] = 8090;
+        cos_table[21] = -5878;
+        sin_table[22] = 7431;
+        cos_table[22] = -6691;
+        sin_table[23] = 6691;
+        cos_table[23] = -7431;
+        sin_table[24] = 5878;
+        cos_table[24] = -8090;
+        sin_table[25] = 5000;
+        cos_table[25] = -8660;
+        sin_table[26] = 4067;
+        cos_table[26] = -9135;
+        sin_table[27] = 3090;
+        cos_table[27] = -9510;
+        sin_table[28] = 2094;
+        cos_table[28] = -9781;
+        sin_table[29] = 1051;
+        cos_table[29] = -9945;
+        sin_table[30] = 0;
+        cos_table[30] = -10000;
+        sin_table[31] = -1051;
+        cos_table[31] = -9945;
+        sin_table[32] = -2094;
+        cos_table[32] = -9781;
+        sin_table[33] = -3090;
+        cos_table[33] = -9510;
+        sin_table[34] = -4067;
+        cos_table[34] = -9135;
+        sin_table[35] = -5000;
+        cos_table[35] = -8660;
+        sin_table[36] = -5878;
+        cos_table[36] = -8090;
+        sin_table[37] = -6691;
+        cos_table[37] = -7431;
+        sin_table[38] = -7431;
+        cos_table[38] = -6691;
+        sin_table[39] = -8090;
+        cos_table[39] = -5878;
+        sin_table[40] = -8660;
+        cos_table[40] = -5000;
+        sin_table[41] = -9135;
+        cos_table[41] = -4067;
+        sin_table[42] = -9510;
+        cos_table[42] = -3090;
+        sin_table[43] = -9781;
+        cos_table[43] = -2094;
+        sin_table[44] = -9945;
+        cos_table[44] = -1051;
+        sin_table[45] = -10000;
+        cos_table[45] = 0;
+        sin_table[46] = -9945;
+        cos_table[46] = 1051;
+        sin_table[47] = -9781;
+        cos_table[47] = 2094;
+        sin_table[48] = -9510;
+        cos_table[48] = 3090;
+        sin_table[49] = -9135;
+        cos_table[49] = 4067;
+        sin_table[50] = -8660;
+        cos_table[50] = 5000;
+        sin_table[51] = -8090;
+        cos_table[51] = 5878;
+        sin_table[52] = -7431;
+        cos_table[52] = 6691;
+        sin_table[53] = -6691;
+        cos_table[53] = 7431;
+        sin_table[54] = -5878;
+        cos_table[54] = 8090;
+        sin_table[55] = -5000;
+        cos_table[55] = 8660;
+        sin_table[56] = -4067;
+        cos_table[56] = 9135;
+        sin_table[57] = -3090;
+        cos_table[57] = 9510;
+        sin_table[58] = -2094;
+        cos_table[58] = 9781;
+        sin_table[59] = -1051;
+        cos_table[59] = 9945;
+    end
+
+    // 时钟计数，每秒计数
+    always @(posedge vga_clk or negedge sys_rstn) begin
+        if (!sys_rstn) begin
+            sec_cnt <= 0;
+            sec <= 0;
+            min <= 0;
+            hour <= 0;
+        end else begin
+            if (sec_cnt == ONE_SEC - 1) begin
+                sec_cnt <= 0;
+                if (sec == 59) begin
+                    sec <= 0;
+                    if (min == 59) begin
+                        min <= 0;
+                        if (hour == 11)
+                            hour <= 0;
+                        else
+                            hour <= hour + 1;
+                    end else begin
+                        min <= min + 1;
+                    end
+                end else begin
+                    sec <= sec + 1;
+                end
+            end else begin
+                sec_cnt <= sec_cnt + 1;
+            end
+        end
+    end
+
+    // 显示逻辑
+    always @(posedge vga_clk or negedge sys_rstn) begin
+        if (!sys_rstn)
+            pix_data <= BLACK;
+        else begin
+            // 计算当前像素到表盘中心的偏移
+            delta_x = $signed(pix_x) - $signed(CENTER_X);
+            delta_y = $signed(pix_y) - $signed(CENTER_Y);
+            distance_sq = delta_x * delta_x + delta_y * delta_y;
+
+            if (distance_sq <= RADIUS * RADIUS) begin
+                // 绘制表盘边框
+                if (distance_sq >= (RADIUS - 2)*(RADIUS - 2)) begin
+                    pix_data <= WHITE;
+                end else begin
+                    // 计算指针末端坐标（长度减半）
+                    // 秒针
+                    sec_x = $signed(CENTER_X) + (($signed(sin_table[sec]) * (RADIUS / 2)) / 10000);
+                    sec_y = $signed(CENTER_Y) - (($signed(cos_table[sec]) * (RADIUS / 2)) / 10000);
+
+                    // 分针
+                    min_x = $signed(CENTER_X) + (($signed(sin_table[min]) * (RADIUS / 2)) / 10000);
+                    min_y = $signed(CENTER_Y) - (($signed(cos_table[min]) * (RADIUS / 2)) / 10000);
+
+                    // 时针
+                    hour_pos = (hour * 5) + (min / 12);
+                    hour_pos = hour_pos % 60;
+                    hour_x = $signed(CENTER_X) + (($signed(sin_table[hour_pos]) * (RADIUS / 2)) / 10000);
+                    hour_y = $signed(CENTER_Y) - (($signed(cos_table[hour_pos]) * (RADIUS / 2)) / 10000);
+
+                    // 调整指针的粗细（减小阈值）
+                    if (sec_y<=300&&sec_x>=400&&delta_x>=0&&delta_y<=0 && ((delta_x * (sec_y - $signed(CENTER_Y)) - delta_y * (sec_x - $signed(CENTER_X))) ** 2) < 15 * (distance_sq))
+									pix_data <= RED;
+						  else if(sec_y>=300&&sec_x>=400&&delta_x>=0&&delta_y>=0 && ((delta_x * (sec_y - $signed(CENTER_Y)) - delta_y * (sec_x - $signed(CENTER_X))) ** 2) < 15 * (distance_sq))
+									pix_data <= RED;
+						  else if(sec_y>=300&&sec_x<=400&&delta_x<=0&&delta_y>=0 && ((delta_x * (sec_y - $signed(CENTER_Y)) - delta_y * (sec_x - $signed(CENTER_X))) ** 2) < 15 * (distance_sq))
+									pix_data <= RED;
+						  else if(sec_y<=300&&sec_x<=400&&delta_x<=0&&delta_y<=0 && ((delta_x * (sec_y - $signed(CENTER_Y)) - delta_y * (sec_x - $signed(CENTER_X))) ** 2) < 15 * (distance_sq))
+									pix_data <= RED;
+									
+						  else if(min_y>=300&&min_x>=400&&delta_x>=0&&delta_y>=0 && ((delta_x * (min_y - $signed(CENTER_Y)) - delta_y * (min_x - $signed(CENTER_X))) ** 2) < 25* (distance_sq))
+									pix_data <= GREEN;
+						  else if (min_y<=300&&min_x>=400&&delta_x>=0&&delta_y<=0 && ((delta_x * (min_y - $signed(CENTER_Y)) - delta_y * (min_x - $signed(CENTER_X))) ** 2) < 25 * (distance_sq))
+									pix_data <= GREEN;
+						  else if(min_y>=300&&min_x<=400&&delta_x<=0&&delta_y>=0 && ((delta_x * (min_y - $signed(CENTER_Y)) - delta_y * (min_x - $signed(CENTER_X))) ** 2) < 25 * (distance_sq))
+									pix_data <= GREEN;
+						  else if(min_y<=300&&min_x<=400&&delta_x<=0&&delta_y<=0 && ((delta_x * (min_y - $signed(CENTER_Y)) - delta_y * (min_x - $signed(CENTER_X))) ** 2) < 25 * (distance_sq))
+									pix_data <= GREEN;
+						  
+						  else if(hour_y>=300&&hour_x>=400&&delta_x>=0&&delta_y>=0 &&((delta_x * (hour_y - $signed(CENTER_Y)) - delta_y * (hour_x - $signed(CENTER_X))) ** 2) < 35 * (distance_sq))
+									pix_data <= BLUE;
+						  else if (hour_y<=300&&hour_x>=400&&delta_x>=0&&delta_y<=0 && ((delta_x * (hour_y - $signed(CENTER_Y)) - delta_y * (hour_x - $signed(CENTER_X))) ** 2) < 35 * (distance_sq))
+									pix_data <= BLUE;
+						  else if(hour_y>=300&&hour_x<=400&&delta_x<=0&&delta_y>=0 && ((delta_x * (hour_y - $signed(CENTER_Y)) - delta_y * (hour_x - $signed(CENTER_X))) ** 2) < 35 * (distance_sq))
+									pix_data <= BLUE;
+						  else if(hour_y<=300&&hour_x<=400&&delta_x<=0&&delta_y<=0 && ((delta_x * (hour_y - $signed(CENTER_Y)) - delta_y * (hour_x - $signed(CENTER_X))) ** 2) < 35 * (distance_sq))
+									pix_data <= BLUE; 
+						  else 
+									pix_data<=WHITE;
+                end
+            end else begin
+                pix_data <= BLACK;
+            end
+        end
+    end
+
+endmodule
